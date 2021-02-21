@@ -1,6 +1,6 @@
 # fitbit-exporter
 
-This is a fork of fitbit project from repository: https://github.com/c99koder/personal-influxdb
+This is a fork of fitbit project from repository: https://github.com/c99koder/personal-influxdb @c99koder
 
 The python script collect fitbit information from API rest and push the data into the influxDB.
 
