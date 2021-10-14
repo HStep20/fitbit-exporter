@@ -40,7 +40,7 @@ def fetch_data(category, type):
         response.raise_for_status()
     except requests.exceptions.HTTPError as err:
         print("HTTP request failed: %s" % (err))
-        sys.exit()
+        #sys.exit()
 
     data = response.json()
     print("Got " + type + " from Fitbit")
