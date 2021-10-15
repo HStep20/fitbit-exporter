@@ -40,7 +40,7 @@ def fetch_data(category, type):
         response.raise_for_status()
     except requests.exceptions.HTTPError as err:
         print("HTTP request failed: %s" % (err))
-        #sys.exit()
+        return
 
     data = response.json()
     print("Got " + type + " from Fitbit")
@@ -290,7 +290,7 @@ for day in data['sleep']:
 
 fetch_data('activities', 'steps')
 fetch_data('activities', 'distance')
-fetch_data('activities', 'floors')
+#fetch_data('activities', 'floors')
 fetch_data('activities', 'elevation')
 fetch_data('activities', 'distance')
 fetch_data('activities', 'minutesSedentary')
