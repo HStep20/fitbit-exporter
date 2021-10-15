@@ -13,8 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import requests, sys, os, pytz
-from datetime import datetime, date, timedelta
+import requests, sys, os, pytz, schedule
+from datetime import datetime, date, time, timedelta
 from influxdb import InfluxDBClient
 from influxdb.exceptions import InfluxDBClientError
 
@@ -30,8 +30,51 @@ INFLUXDB_PORT = os.environ['INFLUXDB_PORT']
 INFLUXDB_USERNAME = os.environ['INFLUXDB_USERNAME']
 INFLUXDB_PASSWORD = os.environ['INFLUXDB_PASSWORD']
 INFLUXDB_DATABASE = os.environ['INFLUXDB_DATABASE']
+RUNTIME = os.environ['RUNTIME']
 points = []
 
+
+
+try:
+    client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=INFLUXDB_USERNAME, password=INFLUXDB_PASSWORD)
+    client.create_database(INFLUXDB_DATABASE)
+    client.switch_database(INFLUXDB_DATABASE)
+except InfluxDBClientError as err:
+    print("InfluxDB connection failed: %s" % (err))
+    sys.exit()
+
+if not FITBIT_ACCESS_TOKEN:
+    if os.path.isfile('.fitbit-refreshtoken'):
+        f = open(".fitbit-refreshtoken", "r")
+        token = f.read();
+        f.close();
+        response = requests.post('https://api.fitbit.com/oauth2/token',
+            data={
+                "client_id": FITBIT_CLIENT_ID,
+                "grant_type": "refresh_token",
+                "redirect_uri": REDIRECT_URI,
+                "refresh_token": token
+            }, auth=(FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET))
+    else:
+        response = requests.post('https://api.fitbit.com/oauth2/token',
+            data={
+                "client_id": FITBIT_CLIENT_ID,
+                "grant_type": "authorization_code",
+                "redirect_uri": REDIRECT_URI,
+                "code": FITBIT_INITIAL_CODE
+            }, auth=(FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET))
+
+    response.raise_for_status();
+
+    json = response.json()
+    FITBIT_ACCESS_TOKEN = json['access_token']
+    refresh_token = json['refresh_token']
+    f = open(".fitbit-refreshtoken", "w+")
+    f.write(refresh_token)
+    f.close()
+
+end = date.today()
+start = end - timedelta(days=1)
 
 def fetch_data(category, type):
     try:
@@ -192,125 +235,92 @@ def fetch_activities(date):
             "fields": fields
         })
 
-try:
-    client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=INFLUXDB_USERNAME, password=INFLUXDB_PASSWORD)
-    client.create_database(INFLUXDB_DATABASE)
-    client.switch_database(INFLUXDB_DATABASE)
-except InfluxDBClientError as err:
-    print("InfluxDB connection failed: %s" % (err))
-    sys.exit()
+def fetch_sleep():
+    try:
+        response = requests.get('https://api.fitbit.com/1.2/user/-/sleep/date/' + start.isoformat() + '/' + end.isoformat() + '.json',
+            headers={'Authorization': 'Bearer ' + FITBIT_ACCESS_TOKEN, 'Accept-Language': FITBIT_LANGUAGE})
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print("HTTP request failed: %s" % (err))
+        sys.exit()
 
-if not FITBIT_ACCESS_TOKEN:
-    if os.path.isfile('.fitbit-refreshtoken'):
-        f = open(".fitbit-refreshtoken", "r")
-        token = f.read();
-        f.close();
-        response = requests.post('https://api.fitbit.com/oauth2/token',
-            data={
-                "client_id": FITBIT_CLIENT_ID,
-                "grant_type": "refresh_token",
-                "redirect_uri": REDIRECT_URI,
-                "refresh_token": token
-            }, auth=(FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET))
-    else:
-        response = requests.post('https://api.fitbit.com/oauth2/token',
-            data={
-                "client_id": FITBIT_CLIENT_ID,
-                "grant_type": "authorization_code",
-                "redirect_uri": REDIRECT_URI,
-                "code": FITBIT_INITIAL_CODE
-            }, auth=(FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET))
+    data = response.json()
+    print("Got sleep sessions from Fitbit")
 
-    response.raise_for_status();
+    for day in data['sleep']:
+        time = datetime.fromisoformat(day['startTime'])
+        utc_time = LOCAL_TIMEZONE.localize(time).astimezone(pytz.utc).isoformat()
+        if day['type'] == 'stages':
+            points.append({
+                "measurement": "sleep",
+                "time": utc_time,
+                "fields": {
+                    "duration": int(day['duration']),
+                    "efficiency": int(day['efficiency']),
+                    "is_main_sleep": bool(day['isMainSleep']),
+                    "minutes_asleep": int(day['minutesAsleep']),
+                    "minutes_awake": int(day['minutesAwake']),
+                    "time_in_bed": int(day['timeInBed']),
+                    "minutes_deep": int(day['levels']['summary']['deep']['minutes']),
+                    "minutes_light": int(day['levels']['summary']['light']['minutes']),
+                    "minutes_rem": int(day['levels']['summary']['rem']['minutes']),
+                    "minutes_wake": int(day['levels']['summary']['wake']['minutes']),
+                }
+            })
+        else:
+            points.append({
+                "measurement": "sleep",
+                "time": utc_time,
+                "fields": {
+                    "duration": int(day['duration']),
+                    "efficiency": int(day['efficiency']),
+                    "is_main_sleep": bool(day['isMainSleep']),
+                    "minutes_asleep": int(day['minutesAsleep']),
+                    "minutes_awake": int(day['minutesAwake']),
+                    "time_in_bed": int(day['timeInBed']),
+                    "minutes_deep": 0,
+                    "minutes_light": int(day['levels']['summary']['asleep']['minutes']),
+                    "minutes_rem": int(day['levels']['summary']['restless']['minutes']),
+                    "minutes_wake": int(day['levels']['summary']['awake']['minutes']),
+                }
+            })
+        
+        if 'data' in day['levels']:
+            process_levels(day['levels']['data'])
+        
+        if 'shortData' in day['levels']:
+            process_levels(day['levels']['shortData'])
 
-    json = response.json()
-    FITBIT_ACCESS_TOKEN = json['access_token']
-    refresh_token = json['refresh_token']
-    f = open(".fitbit-refreshtoken", "w+")
-    f.write(refresh_token)
-    f.close()
+def fetch():
+    fetch_sleep()
+    fetch_data('activities', 'steps')
+    fetch_data('activities', 'distance')
+    fetch_data('activities', 'floors')
+    fetch_data('activities', 'elevation')
+    fetch_data('activities', 'distance')
+    fetch_data('activities', 'minutesSedentary')
+    fetch_data('activities', 'minutesLightlyActive')
+    fetch_data('activities', 'minutesFairlyActive')
+    fetch_data('activities', 'minutesVeryActive')
+    fetch_data('activities', 'calories')
+    fetch_data('activities', 'activityCalories')
+    fetch_data('body', 'weight')
+    fetch_data('body', 'fat')
+    fetch_data('body', 'bmi')
+    fetch_data('foods/log', 'water')
+    fetch_data('foods/log', 'caloriesIn')
+    fetch_heartrate(date.today().isoformat())
+    fetch_activities((date.today() + timedelta(days=1)).isoformat())
 
-end = date.today()
-start = end - timedelta(days=1)
+    try:
+        client.write_points(points)
+    except InfluxDBClientError as err:
+        print("Unable to write points to InfluxDB: %s" % (err))
+        sys.exit()
 
-try:
-    response = requests.get('https://api.fitbit.com/1.2/user/-/sleep/date/' + start.isoformat() + '/' + end.isoformat() + '.json',
-        headers={'Authorization': 'Bearer ' + FITBIT_ACCESS_TOKEN, 'Accept-Language': FITBIT_LANGUAGE})
-    response.raise_for_status()
-except requests.exceptions.HTTPError as err:
-    print("HTTP request failed: %s" % (err))
-    sys.exit()
+    print("Successfully wrote %s data points to InfluxDB" % (len(points)))
 
-data = response.json()
-print("Got sleep sessions from Fitbit")
-
-for day in data['sleep']:
-    time = datetime.fromisoformat(day['startTime'])
-    utc_time = LOCAL_TIMEZONE.localize(time).astimezone(pytz.utc).isoformat()
-    if day['type'] == 'stages':
-        points.append({
-            "measurement": "sleep",
-            "time": utc_time,
-            "fields": {
-                "duration": int(day['duration']),
-                "efficiency": int(day['efficiency']),
-                "is_main_sleep": bool(day['isMainSleep']),
-                "minutes_asleep": int(day['minutesAsleep']),
-                "minutes_awake": int(day['minutesAwake']),
-                "time_in_bed": int(day['timeInBed']),
-                "minutes_deep": int(day['levels']['summary']['deep']['minutes']),
-                "minutes_light": int(day['levels']['summary']['light']['minutes']),
-                "minutes_rem": int(day['levels']['summary']['rem']['minutes']),
-                "minutes_wake": int(day['levels']['summary']['wake']['minutes']),
-            }
-        })
-    else:
-        points.append({
-            "measurement": "sleep",
-            "time": utc_time,
-            "fields": {
-                "duration": int(day['duration']),
-                "efficiency": int(day['efficiency']),
-                "is_main_sleep": bool(day['isMainSleep']),
-                "minutes_asleep": int(day['minutesAsleep']),
-                "minutes_awake": int(day['minutesAwake']),
-                "time_in_bed": int(day['timeInBed']),
-                "minutes_deep": 0,
-                "minutes_light": int(day['levels']['summary']['asleep']['minutes']),
-                "minutes_rem": int(day['levels']['summary']['restless']['minutes']),
-                "minutes_wake": int(day['levels']['summary']['awake']['minutes']),
-            }
-        })
-    
-    if 'data' in day['levels']:
-        process_levels(day['levels']['data'])
-    
-    if 'shortData' in day['levels']:
-        process_levels(day['levels']['shortData'])
-
-fetch_data('activities', 'steps')
-fetch_data('activities', 'distance')
-#fetch_data('activities', 'floors')
-fetch_data('activities', 'elevation')
-fetch_data('activities', 'distance')
-fetch_data('activities', 'minutesSedentary')
-fetch_data('activities', 'minutesLightlyActive')
-fetch_data('activities', 'minutesFairlyActive')
-fetch_data('activities', 'minutesVeryActive')
-fetch_data('activities', 'calories')
-fetch_data('activities', 'activityCalories')
-fetch_data('body', 'weight')
-fetch_data('body', 'fat')
-fetch_data('body', 'bmi')
-fetch_data('foods/log', 'water')
-fetch_data('foods/log', 'caloriesIn')
-fetch_heartrate(date.today().isoformat())
-fetch_activities((date.today() + timedelta(days=1)).isoformat())
-
-try:
-    client.write_points(points)
-except InfluxDBClientError as err:
-    print("Unable to write points to InfluxDB: %s" % (err))
-    sys.exit()
-
-print("Successfully wrote %s data points to InfluxDB" % (len(points)))
+schedule.every().day.at(str(RUNTIME)).do(fetch)
+while True:
+    schedule.run_pending()
+    time.sleep(1)
