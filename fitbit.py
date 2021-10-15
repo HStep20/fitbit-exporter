@@ -13,8 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import requests, sys, os, pytz, schedule
-from datetime import datetime, date, time, timedelta
+import requests, sys, os, pytz, schedule, time
+from datetime import datetime, date, timedelta
 from influxdb import InfluxDBClient
 from influxdb.exceptions import InfluxDBClientError
 
@@ -30,7 +30,6 @@ INFLUXDB_PORT = os.environ['INFLUXDB_PORT']
 INFLUXDB_USERNAME = os.environ['INFLUXDB_USERNAME']
 INFLUXDB_PASSWORD = os.environ['INFLUXDB_PASSWORD']
 INFLUXDB_DATABASE = os.environ['INFLUXDB_DATABASE']
-RUNTIME = os.environ['RUNTIME']
 points = []
 
 
@@ -320,7 +319,7 @@ def fetch():
 
     print("Successfully wrote %s data points to InfluxDB" % (len(points)))
 
-schedule.every().day.at(str(RUNTIME)).do(fetch)
+schedule.every(1).hours.do(fetch)
 while True:
     schedule.run_pending()
-    time.sleep(1)
+    time.sleep(55)
