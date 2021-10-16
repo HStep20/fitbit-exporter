@@ -1,17 +1,29 @@
-# set base image (host OS)
-FROM python:3.7-alpine
+FROM python:3.8-buster
 
-# set the working directory in the container
-WORKDIR /code
+ENV DB_HOST=
+ENV DB_PORT=
+ENV DB_USER=
+ENV DB_PASSWORD=
+ENV DB_NAME=
+ENV FITBIT_TIMEZONE=
+ENV FITBIT_LANGUAGE=
 
-# copy the dependencies file to the working directory
-COPY requirements.txt .
+ENV CLIENT_ID=
+ENV CLIENT_SECRET=
+ENV ACCESS_TOKEN=
+ENV REFRESH_TOKEN=
+ENV EXPIRES_AT=
+ENV CALLBACK_URL=
+ENV UNITS=None
+ENV CONFIG_PATH=/config
 
-# install dependencies
+WORKDIR /fitbit-exporter
+
+COPY requirements.txt /fitbit-exporter/
+COPY api_poller.py /fitbit-exporter/
+
 RUN pip install -r requirements.txt
 
-# copy the content of the local src directory to the working directory
-COPY fitbit.py .
+RUN chmod +x ./api_poller.py
 
-# command to run on container start
-CMD [ "python", "./fitbit.py" ] 
+CMD ["./api_poller.py"]

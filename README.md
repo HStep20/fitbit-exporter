@@ -1,12 +1,9 @@
-
-
 # fitbit-exporter
 
-This is a fork of fitbit project from repository: https://github.com/c99koder/personal-influxdb @c99koder. The python script collect fitbit information from API rest and push the data into the influxDB.
+This is a fork of fitbit project from repository: https://github.com/c99koder/personal-influxdb @c99koder. Originally I had used his code to scrape the fitbit API, but I've moved to using FSVM88's script in the container. Its was more 'data friendly' for grafana and even has a dashboard to get started: 
 
-I forked this from Alexxanddr since I wanted to learn how to work with docker, and it had something I wanted functioning. Original Repo here: https://github.com/Alexxanddr/fitbit-exporter
-
-My Updated Repo that includes some changes, like adding a persistent scheduler with the 'Schedule' library. Now you can leave the container running and it will run a Fitbit Pull to InfluxDB every hour: https://github.com/HStep20/fitbit-exporter
+https://gitlab.com/fsvm88/fitbit-api-exporter
+https://grafana.com/grafana/dashboards/12348
 
 On Dockerhub: https://hub.docker.com/r/hstep20/fitbit-exporter
 
