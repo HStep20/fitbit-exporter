@@ -513,11 +513,12 @@ def run_api_poller():
                                     key_series, first_ts, last_ts, profile_to_first, last_to_current)
                     raise Exception('Unable to write points!')
                 db_client.close()
-        logger.info('All series processed, sleeping for 4h')
-        time.sleep(3610*4)
-
-    sys.exit(0)
+        logger.info('All series processed, sleeping for 8h')
 
 
 if __name__ == "__main__":
     run_api_poller()
+    schedule.every(8).hours.do(run_api_poller)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
