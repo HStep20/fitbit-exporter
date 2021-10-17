@@ -1,13 +1,13 @@
 # fitbit-exporter
 
-This was a fork of fitbit project from repository: https://github.com/c99koder/personal-influxdb. Originally I had used his code to scrape the fitbit API, but I've moved to using FSVM88's script in the container. Its was more 'data friendly' for grafana and even has a dashboard to get started: 
+A containerized version of FSVM88's fitbit-exporter script found on Gitlab: https://gitlab.com/fsvm88/fitbit-api-exporter
 
-https://gitlab.com/fsvm88/fitbit-api-exporter
-
-https://grafana.com/grafana/dashboards/12348
+His dashboard to utilize the data found from the scraper: https://grafana.com/grafana/dashboards/12348
 
 On Dockerhub: https://hub.docker.com/r/hstep20/fitbit-exporter
 
+# Issues
+- It does not 'smart' read api calls. For example, my tracker doesn't read floors or elevation, so it crashes when those two are called. Theyre hard commented out right now, but I hope to fix it.
 
 
 # Variables
